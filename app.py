@@ -11,7 +11,7 @@ app = Flask(__name__)
 # --- GLOBAL STATES & CONSTANTS ---
 PROFIT_MODE = False 
 LATENCY_MODE = False
-MUMBAI_ON_DEMAND_RATE = 0.5008 
+MUMBAI_ON_DEMAND_RATE = 0.0008 
 
 ec2_client = boto3.client('ec2', region_name='us-east-1')
 
