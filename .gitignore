@@ -15,3 +15,9 @@ crash.log
 # Python cache
 __pycache__/
 *.py[cod]
+
+# Executables
+terraform.exe
+
+# Environment variables
+.env
