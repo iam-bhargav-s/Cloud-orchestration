@@ -12,29 +12,29 @@ This ensures maximum uptime while optimizing operational expenses and network la
 
 # Architecture
 
-                                     
-                                                            Next.js Dashboard
-                                                                   │
-                                                                   ▼
-                                                            Flask Backend API
-                                                                   │
-                                                ┌──────────────────┼──────────────────┐
-                                                │                  │                  │
-                                                ▼                  ▼                  ▼
-                                             Terraform          AWS Boto3       Decision Engine
-                                                │                  │                  │
-                                                ▼                  ▼                  ▼
-                                           EC2 + S3 Backend   Spot Pricing     Health > Latency > Cost
-                                                │
-                                                ▼
-                                         GitHub Actions CI/CD
-                                                │
-                                                ▼
-                                              n8n Webhook
-                                                │
-                                                ▼
-                                         Google Sheets Audit Log
-                               
+```
+                    Next.js Dashboard
+                           │
+                           ▼
+                    Flask Backend API
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+        ▼                  ▼                  ▼
+     Terraform          AWS Boto3       Decision Engine
+        │                  │                  │
+        ▼                  ▼                  ▼
+   EC2 + S3 Backend   Spot Pricing     Health > Latency > Cost
+        │
+        ▼
+ GitHub Actions CI/CD
+        │
+        ▼
+      n8n Webhook
+        │
+        ▼
+ Google Sheets Audit Log
+```
 
 ---
 
