@@ -4,6 +4,7 @@ import subprocess
 import json
 import time
 import boto3
+import requests
 from datetime import datetime
 from agent import agent_executor  
 from reconciliation import run_reconciliation_cycle
@@ -14,8 +15,22 @@ app = Flask(__name__)
 PROFIT_MODE = False 
 LATENCY_MODE = False
 MUMBAI_ON_DEMAND_RATE = 0.1008 
+N8N_WEBHOOK_URL = "http://localhost:5678/webhook-test/cloud-alert"
 
 ec2_client = boto3.client('ec2', region_name='us-east-1')
+
+def trigger_n8n_alert(event_type, details):
+    """Member 3: Automated Integration via n8n"""
+    try:
+        payload = {
+            "event": event_type,
+            "details": details,
+            "timestamp": str(datetime.now())
+        }
+        # Fire and forget
+        requests.post(N8N_WEBHOOK_URL, json=payload, timeout=2)
+    except Exception as e:
+        print(f"n8n Integration failed: {e}")
 
 def get_real_spot_price():
     try:
@@ -54,8 +69,20 @@ def check_latency(ip):
 def toggle_logic():
     global PROFIT_MODE, LATENCY_MODE
     data = request.get_json()
-    if 'profit' in data: PROFIT_MODE = data['profit']
-    if 'latency' in data: LATENCY_MODE = data['latency']
+    
+    # Check for changes to trigger the webhook properly
+    new_profit = data.get('profit', PROFIT_MODE)
+    new_latency = data.get('latency', LATENCY_MODE)
+    
+    if new_profit != PROFIT_MODE and new_profit is True:
+        trigger_n8n_alert("MODE_SWITCH", "FinOps (Profit) Mode Activated")
+        
+    if new_latency != LATENCY_MODE and new_latency is True:
+        trigger_n8n_alert("MODE_SWITCH", "Performance (Latency) Mode Activated")
+        
+    PROFIT_MODE = new_profit
+    LATENCY_MODE = new_latency
+    
     return jsonify({"status": "success"})
 
 @app.route('/chat', methods=['POST'])
@@ -69,11 +96,9 @@ def chat():
             config={"configurable": {"thread_id": thread_id}}
         )
         
-        # Check if the agent called the mode switch tool
         switch_mode = None
         switch_action = "on"
         for msg in response["messages"]:
-            # 1. Robust check directly against the AI's structured tool calls
             if hasattr(msg, 'tool_calls') and msg.tool_calls:
                 for tc in msg.tool_calls:
                     name = tc.get('name', '').lower()
@@ -85,7 +110,6 @@ def chat():
                         elif 'lat' in m_arg: switch_mode = 'latency'
                         switch_action = 'off' if ('off' in a_arg or a_arg == 'false') else 'on'
             
-            # 2. Fallback check for raw string output
             content_str = str(msg.content).lower()
             if "mode_switch:finops" in content_str:
                 switch_mode = "finops"
@@ -96,14 +120,12 @@ def chat():
 
         final_message = response["messages"][-1].content
         
-        # Clean up output string format
         if isinstance(final_message, list):
             text_blocks = [b.get('text', '') for b in final_message if isinstance(b, dict) and 'text' in b]
             final_message = "\n".join(text_blocks) if text_blocks else str(final_message)
         elif not isinstance(final_message, str):
             final_message = str(final_message)
 
-        # Remove system flags from final response text if present
         final_message = final_message.replace("MODE_SWITCH:finops:on", "").replace("MODE_SWITCH:finops:off", "")
         final_message = final_message.replace("MODE_SWITCH:latency:on", "").replace("MODE_SWITCH:latency:off", "")
         if not final_message.strip():
@@ -122,7 +144,6 @@ def chat():
 @app.route('/api/reconcile', methods=['POST'])
 def reconcile_infrastructure():
     try:
-        # Trigger the engine for your dual-region setup
         result = run_reconciliation_cycle(regions=["us-east-1", "ap-south-1"])
         return jsonify(result), 200
     except Exception as e:
@@ -184,7 +205,6 @@ def home():
     <head>
         <title>Cloud Orchestrator NOC</title>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-        <!-- Added marked.js to parse the AI's markdown formatting -->
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <style>
             :root {{ --accent: {accent}; --bg: #0b0e14; }}
@@ -204,12 +224,9 @@ def home():
             table {{ width: 100%; border-collapse: collapse; margin-top: 15px; text-align: left; }}
             th {{ color: #8b949e; font-size: 11px; padding: 10px; border-bottom: 1px solid #30363d; }}
             td {{ padding: 15px 10px; font-size: 14px; border-bottom: 1px solid #30363d; }}
-            
             ::-webkit-scrollbar {{ width: 8px; }}
             ::-webkit-scrollbar-track {{ background: #0b0e14; }}
             ::-webkit-scrollbar-thumb {{ background: #30363d; border-radius: 4px; }}
-
-            /* Chat Typography Styles */
             .bot-msg {{ margin-top: 5px; font-size: 13.5px; line-height: 1.6; color: #c9d1d9; }}
             .bot-msg p {{ margin: 0 0 10px 0; }}
             .bot-msg p:last-child {{ margin: 0; }}
@@ -217,8 +234,6 @@ def home():
             .bot-msg li {{ margin-bottom: 4px; }}
             .bot-msg strong {{ color: #ffffff; }}
             .bot-msg code {{ background: #161b22; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; }}
-            
-            /* ADD THESE RULES TO FIX LARGE HEADERS */
             .bot-msg h1 {{ font-size: 16px; font-weight: bold; margin: 10px 0 5px 0; color: #ffffff; }}
             .bot-msg h2 {{ font-size: 14.5px; font-weight: bold; margin: 8px 0 4px 0; color: #ffffff; }}
             .bot-msg h3 {{ font-size: 13.5px; font-weight: bold; margin: 6px 0 2px 0; color: #ffffff; }}
@@ -260,7 +275,6 @@ def home():
         </div>
 
         <div class="main">
-            <!-- Header Section -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-shrink: 0;">
                 <div style="display:flex; align-items:center;">
                     <div style="height:12px; width:12px; background:{accent}; border-radius:50%; box-shadow: 0 0 10px {accent}; margin-right:15px;"></div>
@@ -272,20 +286,14 @@ def home():
                 </div>
             </div>
 
-            <!-- Main Layout Split -->
             <div style="display: flex; gap: 20px; flex-grow: 1; min-height: 0;">
-                
-                <!-- Left Column (Metrics + Table) -->
                 <div style="flex: 1.6; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
-                    
-                    <!-- 3 Smaller Metric Cards on Top -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
                         <div class="card"><p class="label">Endpoint</p><div class="stat-value" style="font-size: 18px;">{current_ip}</div></div>
                         <div class="card"><p class="label">Response</p><div class="stat-value" style="font-size: 18px;">{current_lat} ms</div></div>
                         <div class="card"><p class="label">Rate</p><div class="stat-value" style="font-size: 18px;">{cost_txt}</div></div>
                     </div>
 
-                    <!-- Telemetry Table Directly Below -->
                     <div class="card" style="flex-grow: 1; overflow-y: auto;">
                         <p class="label" style="margin:0;">Multi-Region Telemetry</p>
                         <table>
@@ -312,7 +320,6 @@ def home():
                     </div>
                 </div>
 
-                <!-- Right Column (Full Height Chatbot) -->
                 <div class="card" style="flex: 1; display: flex; flex-direction: column; min-width: 300px;">
                     <p class="label" style="margin:0; margin-bottom: 15px;">EcoOps FinOps Agent</p>
                     <div id="chat-history" style="flex-grow: 1; overflow-y: auto; margin-bottom: 15px; font-size: 13px; display: flex; flex-direction: column; gap: 10px; padding-right: 5px;">
@@ -334,7 +341,6 @@ def home():
         </div>
 
         <script>
-            // GENERATE DYNAMIC THREAD ID
             let currentThreadId = sessionStorage.getItem('ecoops_thread_id');
             if (!currentThreadId) {{
                 currentThreadId = "session_" + Math.random().toString(36).substring(7);
@@ -342,14 +348,10 @@ def home():
             }}
 
             function clearChat() {{
-                // Clear frontend memory
                 sessionStorage.removeItem('ecoops_chat');
-                
-                // GENERATE A NEW THREAD ID to clear backend memory!
                 currentThreadId = "session_" + Math.random().toString(36).substring(7);
                 sessionStorage.setItem('ecoops_thread_id', currentThreadId);
                 
-                // Reset the chat window
                 document.getElementById('chat-history').innerHTML = `
                     <div style="background: #0d1117; padding: 10px; border-radius: 8px; border: 1px solid #30363d; align-self: flex-start; max-width: 95%;">
                         <span style="color: #00ff88; font-weight: bold;">EcoOps:</span>
@@ -358,7 +360,6 @@ def home():
                 `;
             }}
             
-            // Persistent Chat Logic
             const chatHistory = document.getElementById('chat-history');
             const savedChat = sessionStorage.getItem('ecoops_chat');
             if (savedChat) {{
@@ -366,20 +367,18 @@ def home():
                 chatHistory.scrollTop = chatHistory.scrollHeight;
             }}
 
-            let isAgentThinking = false; // Flag to prevent auto-reload while waiting for AI
+            let isAgentThinking = false; 
 
-            // HELPER FUNCTION: properly double-braced for Python f-string
             function applyUiModeSwitch(mode, action) {{
                 const finopsToggle = document.getElementById('pTog');
                 const latencyToggle = document.getElementById('lTog');
-
                 const targetToggle = (mode === 'finops') ? finopsToggle : (mode === 'latency' ? latencyToggle : null);
 
                 if (targetToggle) {{
                     const shouldBeChecked = (action === 'on' || action === 'true');
                     if (targetToggle.checked !== shouldBeChecked) {{
                         targetToggle.checked = shouldBeChecked;
-                        updateMode(); // Directly trigger the backend update and reload!
+                        updateMode(); 
                     }}
                 }}
             }}
@@ -392,13 +391,10 @@ def home():
                 input.value = "";
                 isAgentThinking = true; 
 
-                // 1. Add User Message UI
                 chatHistory.innerHTML += '<div style="background: #1c2128; padding: 10px; border-radius: 8px; border: 1px solid #30363d; align-self: flex-end; max-width: 85%;"><span style="color: #ffae00; font-weight: bold;">You:</span><div style="margin-top: 5px; font-size: 13.5px; line-height: 1.6;">' + userMsg + '</div></div>';
                 
-                // 2. SAVE TO MEMORY NOW (Before adding the loading indicator!)
                 sessionStorage.setItem('ecoops_chat', chatHistory.innerHTML);
                 
-                // 3. ADD LOADING INDICATOR (Temporary, not saved to memory)
                 const loadingId = "load_" + Math.random().toString(36).substring(7);
                 chatHistory.innerHTML += `<div id="${{loadingId}}" style="background: #0d1117; padding: 10px; border-radius: 8px; border: 1px solid #30363d; align-self: flex-start; max-width: 95%;"><span style="color: #8b949e; font-style: italic;">EcoOps is thinking/fetching data...</span></div>`;
                 
@@ -414,28 +410,21 @@ def home():
                     if (!res.ok) throw new Error(`Server returned status: ${{res.status}}`);
                     
                     const data = await res.json();
-
-                    // Remove loading indicator
                     document.getElementById(loadingId).remove();
 
-                    // 1. Add Agent Message UI & Save to Memory FIRST
                     const formattedHTML = typeof marked !== 'undefined' ? marked.parse(data.response) : data.response;
                     chatHistory.innerHTML += '<div style="background: #0d1117; padding: 10px; border-radius: 8px; border: 1px solid #30363d; align-self: flex-start; max-width: 95%;"><span style="color: #00ff88; font-weight: bold;">EcoOps:</span><div class="bot-msg">' + formattedHTML + '</div></div>';
                     
                     sessionStorage.setItem('ecoops_chat', chatHistory.innerHTML);
                     chatHistory.scrollTop = chatHistory.scrollHeight;
 
-                    // 2. NOW trigger the UI switch (which reloads the page)
                     if (data.switch_mode) {{
                         applyUiModeSwitch(data.switch_mode, data.switch_action);
                     }}
 
                 }} catch(e) {{
-                    // Remove loading indicator on error
                     const loader = document.getElementById(loadingId);
                     if(loader) loader.remove();
-
-                    // SHOW ERROR VISIBLY IN THE CHAT
                     chatHistory.innerHTML += `<div style="background: #3a1d1d; padding: 10px; border-radius: 8px; border: 1px solid #ff4444; align-self: flex-start; max-width: 95%;"><span style="color: #ff4444; font-weight: bold;">System Error:</span><div class="bot-msg">${{e.message}} (Check VS Code Terminal)</div></div>`;
                     sessionStorage.setItem('ecoops_chat', chatHistory.innerHTML);
                     chatHistory.scrollTop = chatHistory.scrollHeight;
@@ -491,13 +480,6 @@ def home():
                     }}
                 }}
             }});
-            
-            // SMART RELOAD (Pauses while typing or waiting for AI response)
-            setTimeout(() => {{ 
-                if (!isAgentThinking && document.activeElement !== document.getElementById('chat-input')) {{
-                    window.location.reload(); 
-                }}
-            }}, 5000);
         </script>
     </body>
     </html>
