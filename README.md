@@ -117,39 +117,6 @@ This ensures maximum uptime while optimizing operational expenses and network la
 - **Hybrid State Management:** Uses an **S3 Remote Backend** for persistent Terraform state storage and locking across local and CI/CD environments.
 
 ---
----
-
-# Project Workflow
-
-```
-User Changes Mode
-        │
-        ▼
- Flask Backend
-        │
-        ▼
-Decision Engine
-        │
- ┌──────┼───────────┐
- │      │           │
- ▼      ▼           ▼
-Health Latency    Profit
- │      │           │
- └──────┼───────────┘
-        ▼
- AWS Infrastructure
-        │
-        ▼
-Webhook Trigger
-        │
-        ▼
-      n8n
-        │
-        ▼
-Google Sheets Audit
-```
-
----
 
 # Quick Start
 
@@ -198,11 +165,3 @@ npm install
 
 npm run dev
 ```
-
----
-
-## 5. Deploy Dashboard
-
-The frontend is optimized for deployment on **Vercel**.
-
-Simply connect the GitHub repository to Vercel for automatic deployments.
